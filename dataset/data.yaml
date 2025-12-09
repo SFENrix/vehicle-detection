@@ -1,0 +1,15 @@
+names:
+- bus
+- car
+- motorbike
+- truck
+nc: 4
+roboflow:
+  license: CC BY 4.0
+  project: vehicle-detection-ckrxi-aqcsy
+  url: https://universe.roboflow.com/cath-oxqmx/vehicle-detection-ckrxi-aqcsy/dataset/1
+  version: 1
+  workspace: cath-oxqmx
+test: ../test/images
+train: ../train/images
+val: ../valid/images
