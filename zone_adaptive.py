@@ -586,21 +586,45 @@ def strategy_hybrid_enhanced(zone_metrics, prev_green, min_green, max_green, all
         occupancy = metrics.get('occupancy', 0)
         near_saturation = metrics.get('near_saturation', 0)
         
-        if weighted_count < 0.5:
+        stopped_count = metrics.get('stopped_count', 0)
+        slow_count = metrics.get('slow_count', 0)
+        moving_count = metrics.get('moving_count', 0)
+        total_count = metrics.get('total_count', 0)
+        
+        if USE_VELOCITY_TRACKING and total_count > 0:
+            effective_count = (
+                stopped_count * 1.0 +
+                slow_count * 0.6 +
+                moving_count * 0.2
+            )
+            count_to_use = effective_count
+        else:
+            count_to_use = weighted_count
+        
+        if count_to_use < 0.5:
             base_time = min_green
-        elif weighted_count < 8:
-            base_time = STARTUP_LOST_TIME + (weighted_count * HEADWAY_TIME)
+        elif count_to_use < 8:
+            base_time = STARTUP_LOST_TIME + (count_to_use * HEADWAY_TIME)
         else:
             base_time = STARTUP_LOST_TIME + (8 * HEADWAY_TIME)
-            extra = np.sqrt(weighted_count - 8) * 3
+            extra = np.sqrt(count_to_use - 8) * 3
             base_time += extra
         
         occupancy_factor = 1.0 + (occupancy * 0.3)
         adjusted_time = base_time * occupancy_factor
         
         if near_saturation > NEAR_ZONE_SATURATION_THRESHOLD:
-            cap = 25 + (1 - near_saturation) * 15
-            adjusted_time = min(adjusted_time, cap)
+            if USE_VELOCITY_TRACKING and stopped_count > 0:
+                cap = 25 + (1 - near_saturation) * 15
+                adjusted_time = min(adjusted_time, cap)
+            elif not USE_VELOCITY_TRACKING:
+                cap = 25 + (1 - near_saturation) * 15
+                adjusted_time = min(adjusted_time, cap)
+        
+        if USE_VELOCITY_TRACKING and total_count > 0:
+            moving_ratio = (moving_count + slow_count) / total_count
+            if moving_ratio > 0.8:
+                adjusted_time *= 0.7
         
         adjusted_time = max(min_green, min(max_green, adjusted_time))
         
@@ -610,58 +634,9 @@ def strategy_hybrid_enhanced(zone_metrics, prev_green, min_green, max_green, all
         green[zone_name] = smoothed
     
     return green
-
-def strategy_velocity_aware(zone_metrics, prev_green, min_green, max_green, allocatable, ema_alpha):
-    green = {}
-    
-    for zone_name, metrics in zone_metrics.items():
-        stopped_count = metrics.get('stopped_count', 0)
-        slow_count = metrics.get('slow_count', 0)
-        moving_count = metrics.get('moving_count', 0)
-        total_count = metrics.get('total_count', 0)
-        
-        occupancy = metrics.get('occupancy', 0)
-        near_saturation = metrics.get('near_saturation', 0)
-        
-        effective_count = (
-            stopped_count * 1.0 +
-            slow_count * 0.6 +
-            moving_count * 0.2
-        )
-        
-        if effective_count < 0.5:
-            raw_time = min_green
-        else:
-            count_score = effective_count
-            occupancy_score = occupancy * 100
-            
-            combined_score = (0.5 * count_score) + (0.5 * occupancy_score)
-            
-            scaled_score = np.log(combined_score + 1) * 10
-            raw_time = min_green + (scaled_score / 100) * (max_green - min_green)
-        
-        if near_saturation > 0.75 and stopped_count > 0:
-            saturation_cap = min_green + (1 - near_saturation) * 20
-            raw_time = min(raw_time, saturation_cap)
-        
-        if total_count > 0:
-            moving_ratio = (moving_count + slow_count) / total_count
-            if moving_ratio > 0.8:
-                raw_time *= 0.7
-        
-        raw_time = max(min_green, min(max_green, raw_time))
-        
-        prev = prev_green.get(zone_name, raw_time)
-        smoothed = ema_alpha * raw_time + (1 - ema_alpha) * prev
-        
-        green[zone_name] = smoothed
-    
-    return green
-
 STRATEGIES = {
-    'multisection': strategy_multisection,
-    'hybrid_enhanced': strategy_hybrid_enhanced,
-    'velocity_aware': strategy_velocity_aware,
+    'multisection': strategy_multisection, #heterogeneous traffic
+    'hybrid_enhanced': strategy_hybrid_enhanced, #car dominant traffic
 }
 
 def run_video(source, zones_file, model_path, strategy='multisection', show_raw_detections=SHOW_ALL_DETECTIONS):
@@ -673,9 +648,9 @@ def run_video(source, zones_file, model_path, strategy='multisection', show_raw_
     print(f"Loaded zones in '{zone_format}' format")
     print(f"Using strategy: {strategy}")
     if USE_VELOCITY_TRACKING:
-        print("✅ Velocity tracking: ENABLED (automatically integrated into all strategies)")
+        print("Velocity tracking: ENABLED")
     else:
-        print("ℹ️ Velocity tracking: DISABLED (using count-only mode)")
+        print("Velocity tracking: DISABLED (using count-only mode)")
     
     model = YOLO(model_path)
     cap = cv2.VideoCapture(source)
@@ -687,10 +662,10 @@ def run_video(source, zones_file, model_path, strategy='multisection', show_raw_
     
     if USE_VELOCITY_TRACKING:
         tracker = VelocityAwareTracker()
-        print("✅ Using velocity-aware tracking (integrated with strategies)")
+        print("Taking in to account vehicle velocity for tracking and duration adjustment")
     else:
         tracker = SimpleTracker()
-        print("ℹ️ Using basic tracking")
+        print("Using basic tracking")
     
     history = []
     prev_green = {z: MIN_GREEN for z in zones_data.keys()}
