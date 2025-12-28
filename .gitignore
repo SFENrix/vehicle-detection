@@ -1,0 +1,6 @@
+# Virtual environments
+.venv/
+venv/
+*/venv/
+vehicle_detect/vehicle-detection/venv/
+

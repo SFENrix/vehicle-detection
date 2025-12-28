@@ -103,4 +103,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: C:\Users\cdanielle\belajar\mlproj-vehicledetection\runs\vehicle\vehicle_detector
+save_dir: C:\Users\TUF\Desktop\Kuliah\SEM 5\MACHINE_LEARNING\vehicle_detect\vehicle-detection\runs\vehicle\vehicle_detector

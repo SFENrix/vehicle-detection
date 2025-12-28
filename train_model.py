@@ -13,8 +13,8 @@ MODEL = "yolov8m.pt"
 PROJECT = "runs/vehicle"
 NAME = "vehicle_detector"
 EPOCHS = 300
-IMGSZ = 960
-BATCH = 8
+IMGSZ = 640
+BATCH = 4
 
 # Train 
 model = YOLO(MODEL)
